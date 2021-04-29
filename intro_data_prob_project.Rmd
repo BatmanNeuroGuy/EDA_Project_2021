@@ -1,5 +1,10 @@
 ---
 title: "Exploring the BRFSS data"
+knit: (function(input_file, encoding) {
+  out_dir <- 'docs';
+  rmarkdown::render(input_file,
+ encoding=encoding,
+ output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
 output: 
   html_document: 
     fig_height: 4
@@ -19,7 +24,7 @@ library(dplyr)
 ### Load data
 
 ```{r load-data}
-load("brfss2013.RData")
+load("/Users/justinhayes/Documents/Documents\ -\ Justin’s\ MacBook\ Air/Coursera/Data/brfss2013.RData")
 ```
 
 
