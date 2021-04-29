@@ -1,0 +1,396 @@
+---
+title: "Exploring the BRFSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+```
+
+### Load data
+
+```{r load-data}
+load("brfss2013.RData")
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+These data were collected from a random sample of adults, 18 and older, across U.S. states and territories. Starting in 2011, cell phone lines were included in the sample and a random digit dialing (RDD) methodology was instantiated to ensure that the sample contains a randomized and representative subset of each state and territory. These data were collected by trained interviewers via phone surveys. 
+
+These data were stratified post-collection. In 2011 the CDC began using a process called iterative proportional fitting or raking to ensure proportional distribution across demographic classes, which helps to ensure that the sample includes the correct proportions of various groups comprising the entirety of the state/territory-wide sample and thus, helps enable our ability to generalize from the sample to the population. 
+
+**Because of the sampling method (randomized, post-collection stratification), we can generalize to the larger state/territory populations. However, we cannot make any causal claims because participants were not randomly assigned to experimental and control conditions--i.e., these data are observational, not experimental.**
+
+* * *
+
+## Part 2: Research questions
+
+```{r}
+# Simplify the name of the data frame
+all_data <- brfss2013
+```
+
+**Research quesion 1:** *In 2013, were people living in the south less likely, on average, to be rated as healthy compared to those living in the northeast? Does this disparity have anything to do with race?*
+
+This is an interesting question to me because it serves as a starting point for investigating how regional cultural differences inform health. Of course, it's only a jumping off point, because if there is a difference as I hypothesize, I would then need to drill down and account for things like economic and educational disparities, age, etc. 
+
+Nevertheless, I think this is an interesting question that leads to more questions, which is what science is all about. More importantly, for public health officials, it would help inform policies once these other variables are modeled. 
+
+**Research question 2:** *How are perceptions about the efficacy of mental health treatment related to the likelihood that one will suffer from the negative effects associated with depression? Does this differ by sex?*
+
+One of the most robust findings in clinical psychology is that belief in the efficacy of treatment is the most influential driver of positive outcomes. I think we can start to examine this phenomenon with these data, given that we have data regarding such beliefs as well as data pertaining to mental health outcomes (e.g., How Often Feel Worthless Past 30 Days).
+
+This is an important question given that we are faced with rising levels of mental illness in this country. If this analysis shows a relationship between attitudes about the efficacy of mental health treatment and the likelihood that individuals will be impacted by mental illness, researchers can work to change public perceptions about treatment efficacy to the end of reducing negative mental health outcomes. 
+
+
+
+**Research question 3:** *Is the stigma surrounding mental illness related to the decision to seek treatment for it? Does stigma differ across disparate regions of the U.S.?*
+
+I think this is an important question because if there is indeed a relationship between the amount of stigma and likelihood of seeking treatment it shines emphasizes the importance of destigmatizing mental illness (assuming the analysis holds up under further scrutiny). If this stigma differs across regions, it could inform targeted campaigns intended to distigmatize mental illness. 
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+NOTE: Insert code chunks as needed by clicking on the "Insert a new code chunk" 
+button (green button with orange arrow) above. Make sure that your code is visible
+in the project you submit. Delete this note when before you submit your work.
+
+**Research question 1:**
+
+*In 2013, were people living in the south less likely, on average, to be rated as healthy compared to those living in the northeast? Does this disparity have anything to do with race?*
+
+First we'll need to get the variables we want into a new dataframe: state and physical health status (Good OR Fair/Poor). Finally, we'll need a variable for race, after looking through the guide that accompanied the dataset, I was able to find the 3 variables. 
+```{r, error=TRUE}
+# First we'll need to get the variables we want into a new dataframe: state and adults with good or better health
+health_dat <- brfss2013 %>%
+  select("**_state**", "_rfhlth", "_racegr3")
+```
+This code throws an error, likely because the variable names changed when they were imported into R (variable names cannot begin with numbers or symbols)
+
+Let's take a look at the naming conventions in our data
+```{r}
+names(all_data)
+```
+It appears that for vars beginning with an underscore (_) in the original dataframe, the underscore has simply been removed. Those beginning with a number or character followed by an underscore now beging with X_ in our dataframe. So we can infer that our vars will be called: X_state, rfhlth, and race within our dataframe. 
+
+We can also use the grep() function to find matching text strings
+```{r}
+vars <- c("state","rfhlth", "race")
+for (i in vars)
+{
+  match <- grep(i, names(all_data), value = TRUE)
+  print(match)
+}
+```
+There's a clear match for what we expected the state variable to be, but we did not expect the rfhlth and race variables to be preceded with X_. Let's take a look at these variables to make sure they're what we think they are.
+```{r}
+str(all_data$X_state)
+str(all_data$X_rfhlth)
+str(all_data$X_racegr3)
+
+```
+
+Indeed, these are the variables I'm interested in. Now I can create a new dataframe with these three vars
+```{r}
+reg_health_dat <- all_data %>%
+  select(X_state, X_rfhlth, X_racegr3) 
+```
+
+We need to determine the proportion of people in Good or Better Health for each state, but we are only interested in the good to fair/bad health ratio and so we need to throw out N/A values.  
+
+Let's get an idea of how much missing data we are dealing with:
+```{r}
+sum(is.na(reg_health_dat$X_racegr3))
+sum(is.na(reg_health_dat$X_rfhlth))
+
+```
+The proportion of missing to complete data is relatively small, so we can safely toss out the rows with missing data and still have a sufficiently large sample. 
+```{r}
+reg_health_dat <- reg_health_dat[complete.cases(reg_health_dat),]
+```
+Let's make sure this did the trick
+```{r}
+summary(reg_health_dat$X_rfhlth)
+summary(reg_health_dat$X_racegr3)
+
+```
+
+It worked, we no longer have any missing data associated with either variable.
+
+We can take a look at proportions of those who report good health vs. fair/poor health by state using dplyr:
+```{r}
+reg_health_dat %>%
+  group_by(X_state, X_rfhlth) %>%
+  summarise(n=n()) %>%
+  mutate(freq = n/sum(n))
+```
+But we are interested in differences by regions. I've assigned each state to a region according to this website (https://officialguide.lsac.org/release/Search/RegionList.aspx). Any subregion with the word *south* in it was assigned to the south region. NewEngland and Northeast were assigned to the northeast region. The remaining states/territories were assigned to other. I'll take a look at a map that denotes the states belonging to each of region and create a new variable called Region:
+```{r}
+Northeast <- c("New Jersey", "New York", "Pennsylvania", "Connecticut", "Maine", "Massachusetts", "New Hampshire", "Rhode Island", "Vermont")
+Other <- c("Oregon", "Washington", "Alaska", "Arizona", "Colorado", "Idaho", "Montana", "New Mexico", "Utah", "Wyoming", "Iowa", "Kansas", "Missouri", "Nebraska", "North Dakota", "South Dakota","Delaware","District of Columbia","Illinois", "Indiana", "Michigan", "Minnesota", "Ohio", "Wisconsin","California", "Hawaii", "Nevada","Guam")
+South <- c("Arkansas", "Louisiana", "Oklahoma", "Texas", "Alabama", "Florida", "Georgia", "Mississippi", "South Carolina", "Puerto Rico","Kentucky","Maryland","North Carolina","Tennessee","Virginia","West Virginia")
+
+
+reg_health_dat <- reg_health_dat %>%
+  mutate(Region = case_when(
+    reg_health_dat$X_state %in% South ~ "South",
+    reg_health_dat$X_state %in% Northeast ~ "Northeast",
+    reg_health_dat$X_state %in% Other ~ "Other",
+    )
+         )
+# Convert the Region variable to a factor
+reg_health_dat$Region <- as.factor(reg_health_dat$Region)
+# Make sure that it divided the variable into discrete levels
+levels(reg_health_dat$Region)
+# Check for NA values
+sum(is.na(reg_health_dat$Region))
+```
+First, lets look at overall differences in the proportion of people who are in fair/bad health between regions. First we'll 
+
+```{r}
+reg_health_dat %>%
+  group_by(Region, X_rfhlth) %>%
+  summarise(count=n()) %>%
+  mutate(Prop = count/sum(count)) %>%
+  filter(X_rfhlth == "Fair or Poor Health") %>%
+  ggplot(aes(x = Region, y = Prop)) +
+    labs(title = "Health by Region", y = "Proportion") +
+    theme(axis.text.x = element_text(size=10, angle=90)) + 
+    geom_bar(stat = "identity")
+```
+
+Clearly, there's a higher proportion of individuals in fair/poor health in the south (~ 25%) compared to the northeast (~17%). Or you could say that there's a higher proportion of individuals in good health in the northeast. Further, there doesn't seem to be much difference between the health of those in the Northeast compared to the rest of the country/territories. 
+
+Let's take a look to see if the distribution of races is equal across regions for those who report being in fair/poor health.
+
+```{r}
+ reg_health_dat %>%
+  group_by(Region, X_rfhlth, X_racegr3) %>%
+  summarise(count=n()) %>%
+  mutate(Prop = count/sum(count)) %>%
+  filter(X_rfhlth == "Fair or Poor Health") %>%
+  ggplot(aes(x = Region, y = Prop, fill = X_racegr3)) +
+    labs(title = "Race Among Those in Fair/Poor Health", y = "Proportion", fill = "Race") +
+    theme(axis.text.x = element_text(size=10, angle=90)) + 
+    geom_bar(stat = "identity")
+```
+
+These data suggest that there are more people of color in the South who are in poor health compared to the other regions, and the pattern is consistent with what we saw in the overall fair/poor health proportions above. This suggests that the disparity in the number of people in fair/poor health across regions may be related to race. However, these data do not tell us why it might be the case. Nevertheless, it's reasonable to hypothesize that socioeconomic factors associated with historically disadvantaged groups, such as income, access to health care, access to healthy food, etc., might account for this finding. However, we would need to explore these data further to draw any inferences about what these data are telling us.  
+
+*I would like to emphasize that these results in no way suggest that race causes fair/poor health. I suspect that there are a number of unexplored variables that can account for this finding and that a sophisticated model (e.g., multiple regression) would shed more light on the complex relationship between race and health outcomes.* 
+
+
+**Research quesion 2:**
+
+*How are perceptions regarding the efficacy of mental health treatment related to the likelihood that one will suffer from the negative effects associated with depression? Does this differ by gender?*
+
+First, we need to identify the variables we will be exploring. We find Optional Module 17 - Mental Illness and Stigma in the Data Guide. This includes a variable asking participants about their perceptions of mental health treatment and a we'll use a variable measuring how often people have felt depressed over the past 30 days as our depression variable.  
+
+We'll begin by searching for our variables in the all_data df. 
+```{r}
+vars <- c("misdeprd","mistrhlp", "sex")
+for (i in vars)
+{
+  match <- grep(i, names(all_data), value = TRUE)
+  print(match)
+}
+```
+
+Okay, so it seems that we've found our variable names, let's take a closer look to be sure that we are examining the correct variables.
+```{r}
+str(all_data$misdeprd)
+str(all_data$mistrhlp)
+str(all_data$sex)
+```
+These are the correct variables, let's put them in a new dataframe called mh_data. Finally, we may want to see how these variables differ by state, so we'll attach the state variable as well. 
+```{r}
+mh_data <- all_data %>%
+  select(misdeprd, mistrhlp, sex, X_state) 
+
+str(mh_data)
+```
+
+Looking at the data frame, it seems like there are a lot of missing values. Let's quantify this missing data before moving forward. 
+```{r}
+mh_data %>% 
+  group_by(misdeprd) %>% 
+  summarise(count = n())
+```
+For the depression variable, we have a huge amount of missing data; this already gives us an insight into potential stigma associated with mental illness. Nonetheless, we'll analze what data we have left. 
+
+What about belief in the efficacy of mh treatment? What does this variable look like?
+```{r}
+mh_data %>% 
+  group_by(mistrhlp) %>% 
+  summarise(count = n())
+```
+Again, there is a lot of missing data. We'll have to work with what we have.
+
+Finally, we'll take a look at sex. I suspect that there will not be nearly as many missing data points in this variable. 
+```{r}
+mh_data %>% 
+  group_by(sex) %>% 
+  summarise(count = n())
+```
+My suspicion was correct. We have only 7 missing data points. 
+
+Now, we'll filter out rows with missing data and see how many complete cases we have left. 
+```{r}
+mh_data <- mh_data[complete.cases(mh_data),]
+```
+We still have an n of nearly 35k, which is a sufficient sample size. *However, we can't be sure that these data are truly representative of the population as it could be the case that people with strong beliefs about mental health care or those who are depressed (or not) are less likely to respond to questions regarding mental health--in other words, there might be a systematic bias in these data given the large amount of missing data pertaining to mental health.*
+
+Nevertheless, we'll continue with our analysis.  
+
+Let's take a look at the frequeny of answers for each variable
+```{r}
+par(mfrow=c(2,2))
+ggplot(data = mh_data, aes(x=mh_data$mistrhlp)) + geom_bar()
+ggplot(data = mh_data, aes(x=mh_data$misdeprd)) + geom_bar()
+ggplot(data = mh_data, aes(x=mh_data$sex)) + geom_bar()
+```
+By looking at the frequencies of responses across these categories, it seems that females are much more likely to report information about mental health. This is consistent with cultural norms in the U.S.--i.e., men are less likely to talk their feelings compared to women. Additionally, overall respondents are most likely (by a huge margin) to report that they agree that mental health treatment can help people live normal lives. Finally, as would be expected, most respondents do not report any depression in the past 30 days. According to samhsa.gov (https://www.samhsa.gov/data/sites/default/files/NSDUHmhfr2013/NSDUHmhfr2013.htm#2-3) approximately 6.7% of adults in the U.S. had a major depressive episode in 2013. Are these data consistent with that finding?
+
+Let's look:
+```{r}
+mh_data %>%
+  group_by(misdeprd) %>%
+  summarise(count=n()) %>%
+  mutate(Prop = (count/sum(count))*100)
+```
+If we classify depression as feeling depressed during some, most, or all of the past 30 days they felt depressed, we see that around 6% of respondents fit the criteria. This is consistent with the samhsa.org figures.
+
+Let's take a look at the proportion of responses indicating depression level in the past 30 days (misdeprd) across each level of belief in the efficacy of mental health treatment (mistrhlp).
+
+```{r}
+mh_data %>%
+  group_by(mistrhlp, misdeprd) %>%
+  summarise(count=n()) %>%
+  mutate(Prop = (count/sum(count))*100) %>%
+  ggplot(aes(x = mistrhlp, y = Prop, fill = misdeprd)) +
+    labs(title = "Belief in MH Treatment Efficacy Across Varying Levels of Depression", y = "Proportion", x = "Belief In MH Treatment Efficacy",fill = "DaysDepressed(Last 30 Days)") +
+    theme(axis.text.x = element_text(size=8, angle=90)) + 
+    geom_bar(stat = "identity")
+```
+This plot suggests that, in 2013, individuals who believed in the efficacy of mental health treatment were more likely to report no depression in the past 30 days, insofar as the proportion of those reporting no depression increases from right to left across the x axis (i.e., as belief that mental health treatment can help people lead normal lives increases). Additionally, as belief decreased we see an increase in who reported that during the past 30 days some, most, or all days they experienced depression symptoms.
+
+This finding is consistent with what I expected; however, as mentioned earlier, there may be a systematic bias in these data since there is a preponderance of missing data points.
+
+Let's check out the sex variable. First, we'll see if there is an overall difference in depression between men and women.
+```{r}
+mh_data %>%
+  group_by(sex, misdeprd) %>%
+  summarise(count=n()) %>%
+  mutate(Prop = (count/sum(count))*100)
+```
+The overall proportion of some - all days in the past 30 days of experiencing depression is higher for women (7.24%) compared with men (5.33%). This is consistent with other research (https://www.samhsa.gov/data/sites/default/files/NSDUHmhfr2013/NSDUHmhfr2013.htm#2-3), although this disparity is typically larger. 
+
+
+Let's see if there is a difference in depression as a function of belief in treatment efficacy across men and women.
+```{r}
+mh_data %>%
+  group_by(sex, mistrhlp, misdeprd) %>%
+  summarise(count=n()) %>%
+  mutate(Prop = (count/sum(count))*100) %>%
+  ggplot(aes(x = mistrhlp, y = Prop, fill = misdeprd)) +
+    labs(title = "Belief in MH Treatment Efficacy Across Varying Levels of Depression", y = "Proportion", x = "Belief In MH Treatment Efficacy",fill = "DaysDepressed(Last 30 Days)") +
+    theme(axis.text.x = element_text(size=8, angle=90)) + 
+    geom_bar(stat = "identity") + facet_wrap(~sex)
+
+```
+There are subtle differences but overall, it seems that the more both men and women believe that mental health treatment can help people live normal lives the less likely they are to have experienced at least some depression in the 30 days prior to being surveyed. Of course, it's possible that other variables can explain these findings (as mentioned earlier, due to the amount of missing data there could be a self-selection bias)--nevertheless, it's a promising area of research and if belief in treatment efficacy has the potential to reduce the severity of depression (either in itself or by encouraging people to seek treatment), then campaigns intended to increase such beliefs could improve outcomes across society. BUT...we can't say anything about causation here, so it could also be the case that being depressed decreases belief (or being not-depressed increases it), rather than belief decreasing depression (or lack of belief increasing it). A lot of questions remain. 
+
+
+
+**Research quesion 3:**
+
+*Overall, is the stigma surrounding mental illness related to the decision to seek treatment for it? Does stigma differ across disparate regions of the U.S.?*
+
+For this question, we'll first refer to the codebook to find variables associated with seeking treatment for mental illness and perceptions of stigma. The number of missing values may also be informative insofar as refusing to answer questions regarding mental illness may be a proxy for stigma. We'll also include the state variable to see how stigma differs across the country. Finally, we'll include the sex variable as stigma may vary between men and women.
+
+It appears that the mistmnt variable describes whether or not treatment was sought. The misphlpf variable is associated with the perception that people care about those with mental illness. We'll create a new df with these variables as well as 
+
+```{r}
+stigma_df <- all_data %>%
+  select(mistmnt, misphlpf, X_state, sex)
+```
+
+The names of these variables are a bit difficult to interpret. Let's give them some more intuitive names.
+```{r}
+stigma_df <- stigma_df %>%
+  rename(treatment_sought = mistmnt, stigma = misphlpf, state = X_state)
+```
+
+First, we'll see how the number of missing values for our treatment_sought and stigma variables vary across states. We'll use this as a proxy for stigma (although this may not actually reflect stigma, I think it's a reasonable assumption that if people refuse to answer questions about mental illness, this suggests that they are uncomfortable talking about it).
+
+```{r}
+stigma_df  %>%
+  group_by(state, treatment_sought) %>%
+  summarise(count = n()) %>%
+  mutate(prop = (count/sum(count))*100) %>%
+  filter(is.na(treatment_sought)) %>%
+  filter(prop < 100)
+```
+All states except for a handful have no data for the treatment_sought variable. Thus, I think a better conclusion is that this variable was not measured very thoroughly. Therefore, we'll focus only on states where the proportion of null values for this variable is < 100. We'll leave Maine out as well, given that there's only 1 response that's not an NA. 
+
+But how many people sought treatment across our sample?
+```{r}
+stigma_df %>%
+  group_by(treatment_sought) %>%
+  filter(!is.na(treatment_sought)) %>%
+  summarise(count = n()) %>%
+  mutate(prop = count/sum(count))
+```
+About 15% of our total sample (n = 5372) sought treatment. This is a sufficiently large sample size. 
+
+Let's look at treatment_sought as it relates to perceptions of mental illness (stigma).
+```{r}
+st = c("Alabama","Massachusetts", "Minnesota", "Nevada", "Tennessee", "Washington")
+stigma_df  %>%
+  group_by(state, stigma, treatment_sought) %>%
+  filter(state %in% st & !is.na(treatment_sought) & !is.na(stigma)) %>%
+  group_by(treatment_sought, stigma) %>%
+  summarise(count = n()) %>%
+  mutate(prop = (count/sum(count))*100) %>%
+  ggplot(aes(x = treatment_sought, y = prop, fill = stigma)) +
+    labs(title = "Stigma Around Mental Illness and Treatment Seeking", y = "Proportion", x = "Sought Treatment",fill = "Mentally Ill: Viewed Positively?") +
+    theme(axis.text.x = element_text(size=8, angle=45)) + 
+    geom_bar(stat = "identity")
+
+```
+Overall, it seems like individuals who have sought treatment perceive a negative stigma associated with mental illness more than those who have not sought treatment. Of course, we can't interpret these results without knowing more and without running inferential statistics, but it raises some additional questions worth exploring. For instance, it could be that individuals who have sought treatment are more prone to negative thinking in general, due to the illness. Alternatively, people who have sought treatment may have experienced stigma first hand. 
+
+
+Since we only have a handful of states included in our analysis, let's take a look stigma and treatment seeking by state. 
+
+```{r}
+stigma_df  %>%
+  group_by(state, stigma, treatment_sought) %>%
+  filter(state %in% st & !is.na(treatment_sought) & !is.na(stigma)) %>%
+  group_by(state, treatment_sought, stigma) %>%
+  summarise(count = n()) %>%
+  mutate(prop = (count/sum(count))*100) %>%
+  ggplot(aes(x = treatment_sought, y = prop, fill = stigma)) +
+    labs(title = "Stigma Around Mental Illness and Treatment Seeking", y = "Proportion", x = "Sought Treatment",fill = "Mentally Ill: Viewed Positively?") +
+    theme(axis.text.x = element_text(size=8, angle=45)) + 
+    geom_bar(stat = "identity") + facet_wrap(~state)
+```
+
+We see similar patterns within states that we see across them, with the exception of Alabama, where there seems to little difference in perception of stigma across both those who sought treatment and those who didn't. 
+
+The analyses done here provide some promising research questions with this data set. However, we can't draw any conclusions from them without doing a more in depth analysis using inferential statistics and modeling. 
+```
